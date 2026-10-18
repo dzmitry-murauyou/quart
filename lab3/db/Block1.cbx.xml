@@ -1,0 +1,9 @@
+<?xml version="1.0" ?>
+<LOG_ROOT>
+	<PROJECT NAME="Block1">
+		<CBX_INST_ENTRY INSTANCE_NAME="|Block1|buffer_6byte:inst2|lpm_dff0:inst10|lpm_ff:lpm_ff_component|altshift_taps:dffs_rtl_0" CBX_FILE_NAME="shift_taps_g1m.tdf"/>
+		<CBX_INST_ENTRY INSTANCE_NAME="|Block1|lpm_decode1:inst3|lpm_decode:lpm_decode_component" CBX_FILE_NAME="decode_trf.tdf"/>
+		<CBX_INST_ENTRY INSTANCE_NAME="|Block1|lpm_ram_dq0:inst1|altsyncram:altsyncram_component" CBX_FILE_NAME="altsyncram_ric1.tdf"/>
+		<CBX_INST_ENTRY INSTANCE_NAME="|Block1|lpm_rom0:inst|altsyncram:altsyncram_component" CBX_FILE_NAME="altsyncram_8551.tdf"/>
+	</PROJECT>
+</LOG_ROOT>
