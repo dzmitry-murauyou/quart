@@ -715,18 +715,34 @@ applicable agreement for further details.
 	(pt -8 416)
 	(pt 88 416)
 )
-(connector
-	(pt 632 384)
-	(pt 632 408)
-)
-(connector
-	(text "read" (rect 687 368 708 380)(font "Arial" ))
-	(pt 632 384)
-	(pt 744 384)
-)
 (junction (pt 216 624))
 (junction (pt 216 496))
 (junction (pt 216 376))
 (junction (pt 216 256))
 (junction (pt 216 288))
 (junction (pt 96 448))
+(connector
+	(pt 96 344)
+	(pt 320 344)
+)
+(connector
+	(pt 320 344)
+	(pt 320 424)
+)
+(connector
+	(pt 320 424)
+	(pt 584 424)
+)
+(connector
+	(pt 584 424)
+	(pt 584 392)
+)
+(connector
+	(pt 584 392)
+	(pt 632 392)
+)
+(connector
+	(pt 632 392)
+	(pt 632 408)
+)
+(junction (pt 96 344))

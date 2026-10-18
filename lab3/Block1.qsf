@@ -51,6 +51,7 @@ set_global_assignment -name QIP_FILE lpm_ram_dq0.qip
 set_global_assignment -name BDF_FILE buffer_6byte.bdf
 set_global_assignment -name MISC_FILE "C:/Users/user/Desktop/lab3/Block1.dpf"
 set_global_assignment -name QIP_FILE lpm_dff0.qip
+set_global_assignment -name QIP_FILE lpm_dff1.qip
 set_global_assignment -name QIP_FILE lpm_decode0.qip
 set_global_assignment -name QIP_FILE lpm_mux0.qip
 set_global_assignment -name QIP_FILE lpm_bustri0.qip
