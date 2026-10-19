@@ -132,6 +132,29 @@ def main():
     chk('buf: AND15 = clk & OR16.OUT -> spine', and15['IN2'] == or16['OUT'] and and15['IN1'] == cpin)
     spine = [v[pn] for k, v in buf.items() if k[0] == 'inst10' for pn, pt in v.items() if pn == 'clock']
     chk('buf: DFF clocks == AND15.OUT', spine == [and15['OUT']])
+    # --- inclock/outclock split (lab requirement) ---
+    rom, ram = T('inst'), T('inst1')          # lpm_rom0, lpm_ram_dq0
+    a6, a7 = T('inst6'), T('inst7')           # AND2 gates
+    chk('ROM: has inclock & outclock ports',
+        'inclock' in rom and 'outclock' in rom)
+    chk('ROM.inclock == inst6.OUT (clk&Read, gated)',
+        rom['inclock'] == a6['OUT'])
+    chk('ROM.outclock == top-level clk net (raw)',
+        rom['outclock'] == clk_net)
+    chk('ROM: inclock and outclock are SPLIT (different nets)',
+        rom['inclock'] != rom['outclock'])
+    chk('RAM: inclock == inst7.OUT (clk&(Read|Write))',
+        ram['inclock'] == a7['OUT'])
+    chk('RAM: has outclock port (split clock interface)',
+        'outclock' in ram)
+    ram_oc_pt = None
+    for inm, sn, ports in tsyms:
+        if inm == 'inst1' and 'outclock' in ports:
+            ram_oc_pt = ports['outclock']
+    def pin_wired(pt):
+        return any(a == pt or b == pt or on_seg(pt, a, b) for a, b in tconn)
+    chk('RAM.outclock pin UNCONNECTED -> asynchronous output',
+        ram_oc_pt == (960, 592) and not pin_wired(ram_oc_pt))
     print('\nALL PASS' if ok else '\nFAILURES PRESENT')
     sys.exit(0 if ok else 1)
 

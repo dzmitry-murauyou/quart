@@ -35,12 +35,14 @@ module lpm_ram_dq0 (
 	address,
 	data,
 	inclock,
+	outclock,
 	wren,
 	q);
 
 	input	[5:0]  address;
 	input	[7:0]  data;
 	input	  inclock;
+	input	  outclock;
 	input	  wren;
 	output	[7:0]  q;
 

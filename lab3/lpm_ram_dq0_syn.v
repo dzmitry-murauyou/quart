@@ -522,12 +522,14 @@ module lpm_ram_dq0 (
 	address,
 	data,
 	inclock,
+	outclock,
 	wren,
 	q)/* synthesis synthesis_clearbox = 1 */;
 
 	input	[5:0]  address;
 	input	[7:0]  data;
 	input	  inclock;
+	input	  outclock;
 	input	  wren;
 	output	[7:0]  q;
 
@@ -596,6 +598,7 @@ endmodule
 // Retrieval info: USED_PORT: address 0 0 6 0 INPUT NODEFVAL address[5..0]
 // Retrieval info: USED_PORT: data 0 0 8 0 INPUT NODEFVAL data[7..0]
 // Retrieval info: USED_PORT: inclock 0 0 0 0 INPUT NODEFVAL inclock
+// Retrieval info: USED_PORT: outclock 0 0 0 0 INPUT NODEFVAL outclock
 // Retrieval info: USED_PORT: q 0 0 8 0 OUTPUT NODEFVAL q[7..0]
 // Retrieval info: USED_PORT: wren 0 0 0 0 INPUT NODEFVAL wren
 // Retrieval info: CONNECT: @address_a 0 0 6 0 address 0 0 6 0

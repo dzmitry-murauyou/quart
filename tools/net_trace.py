@@ -53,6 +53,9 @@ def main(path, points):
         for m in members: print('   ', m)
         # wire geometry of the net
         segs = [c for c in conns if d.find(c[0]) == rn]
+        if not segs:
+            print('    (no wires - pin present but unconnected)')
+            continue
         xs = sorted({p[0] for s in segs for p in s})
         ys = sorted({p[1] for s in segs for p in s})
         print(f'    extent x[{min(xs)},{max(xs)}] y[{min(ys)},{max(ys)}]  segs={len(segs)}')
