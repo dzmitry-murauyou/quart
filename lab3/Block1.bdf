@@ -681,6 +681,18 @@ applicable agreement for further details.
 	)
 )
 (connector
+	(pt 792 296)
+	(pt 768 296)
+)
+(connector
+	(pt 768 296)
+	(pt 768 360)
+)
+(connector
+	(pt 768 360)
+	(pt 632 360)
+)
+(connector
 	(pt 792 264)
 	(pt 752 264)
 	(bus)
@@ -693,10 +705,6 @@ applicable agreement for further details.
 (connector
 	(pt 792 280)
 	(pt 760 280)
-)
-(connector
-	(pt 792 296)
-	(pt 760 296)
 )
 (connector
 	(pt 792 400)
@@ -844,10 +852,6 @@ applicable agreement for further details.
 (connector
 	(pt 760 280)
 	(pt 760 288)
-)
-(connector
-	(pt 760 288)
-	(pt 760 296)
 )
 (connector
 	(pt 624 288)
@@ -1030,9 +1034,9 @@ applicable agreement for further details.
 (junction (pt 760 432))
 (junction (pt 720 560))
 (junction (pt 1224 480))
+(junction (pt 632 360))
 (junction (pt 1224 384))
 (junction (pt 1224 440))
-(junction (pt 760 288))
 (junction (pt 600 432))
 (junction (pt 632 320))
 (junction (pt 632 592))
