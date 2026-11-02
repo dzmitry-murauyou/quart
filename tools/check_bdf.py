@@ -72,6 +72,15 @@ def main():
         nonlocal ok
         print(('PASS ' if cond else 'FAIL ') + label)
         ok = ok and cond
+    # Quartus BDF uses circle for the NOT bubble. Each primitive pin has
+    # both the logical name and a matching invisible drawing label.
+    source = open('lab3/Block1.bdf', encoding='utf-8').read()
+    not_symbol = re.search(r'\(symbol\n\t\(rect 1600 1096 1648 1128\).*?\n\)\n', source, re.S)
+    chk('NOT symbol uses Quartus circle drawing and complete pin labels',
+        bool(not_symbol and '(circle (rect 31 12 39 20))' in not_symbol.group()
+             and not_symbol.group().count('(text "IN"') == 2
+             and not_symbol.group().count('(text "OUT"') == 2))
+    chk('no nonstandard ellipse drawing in Block1.bdf', '(ellipse ' not in source)
     rd1, rd2, a11, a12, o13, a14 = T('inst9'), T('inst10'), T('inst11'), T('inst12'), T('inst13'), T('inst14')
     # locate reference nets by geometry of existing pins
     refs = {}
