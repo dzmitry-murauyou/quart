@@ -10,10 +10,11 @@ Design facts (verified against lpm_rom0.v / lpm_ram_dq0.v / buffer_6byte.bdf):
          clocked by clk & Read.
   * RAM: address reg (inclock), async output -> 1-cycle latency,
          clocked by clk & (Read|Write); wren = Write.
-  * Buffer: 6-deep lpm_dff shift chain, same gated clock; shifts IN from
-         the bus while Read, shifts OUT (tail r5) while Write.
+  * Buffer: 6-deep lpm_dff shift chain. It shifts on the rising clk
+         while reading and on the falling clk while writing. The top-level
+         write_armed DFF suppresses an extra shift when Write starts.
   * All clocks are AND-gated -> Read/Write/ROM_RAM/Address must change
-    ONLY when clk is LOW (at multiples of 20 ns), otherwise a spurious
+    ONLY when clk is LOW, otherwise a spurious
     gated-clock edge corrupts RAM and the buffer.
 
 Corrected schedule:
@@ -21,13 +22,13 @@ Corrected schedule:
   [60,220)   READ from ROM (ROM_RAM=0), addresses 0x03..0x08, 8 gated edges:
              2 pipeline-fill + 6 data samples 11,22,33,44,55,66 -> buffer
   [220,260)  wait 2 clk
-  [260,380)  WRITE buffer -> RAM addresses 0x30..0x35, 6 gated edges
-  [380,440)  wait (ROM_RAM 0->1 at 420, address preset 0x0A)
+  [260,381)  WRITE buffer -> RAM addresses 0x30..0x35, 6 gated edges
+  [381,440)  wait (ROM_RAM 0->1 at 420, address preset 0x0A)
   [440,580)  READ from RAM (ROM_RAM=1), addresses 0x0A..0x0F, 7 gated edges:
              1 pipeline-fill (stale q) + 6 data samples AA,BB,CC,DD,EE,FF
   [580,620)  wait 2 clk (address preset 0x38)
-  [620,740)  WRITE buffer -> RAM addresses 0x38..0x3D, 6 gated edges
-  [740,860)  idle
+  [620,741)  WRITE buffer -> RAM addresses 0x38..0x3D, 6 gated edges
+  [741,860)  idle
 """
 import re, os
 
@@ -47,7 +48,7 @@ def tl(levels):
 NEW = {}
 # clk: unchanged (kept from original file)
 NEW['Read'] = tl([(0, 60), (1, 160), (0, 220), (1, 140), (0, 280)])
-NEW['Write'] = tl([(0, 260), (1, 120), (0, 240), (1, 120), (0, 120)])
+NEW['Write'] = tl([(0, 260), (1, 121), (0, 239), (1, 121), (0, 119)])
 NEW['ROM_RAM'] = tl([(0, 420), (1, 440)])
 NEW['Address[5]'] = tl([(0, 260), (1, 160), (0, 180), (1, 260)])
 NEW['Address[4]'] = tl([(0, 260), (1, 160), (0, 180), (1, 260)])

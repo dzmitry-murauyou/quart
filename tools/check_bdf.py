@@ -7,7 +7,7 @@ import re, sys
 def parse(path):
     s = open(path, encoding='utf-8').read()
     syms = []   # (instname, symbolname, {(portname or index): (x,y)})
-    for m in re.finditer(r'\(symbol\n\t\(rect (\d+) (\d+) (\d+) (\d+)\)\n'
+    for m in re.finditer(r'\(symbol\n\t\(rect (-?\d+) (-?\d+) (-?\d+) (-?\d+)\)\n'
                          r'\t\(text "([^"]+)"[^\n]*\n\t\(text "(inst[^"]*)"', s):
         x0, y0, x1, y1 = map(int, m.groups()[:4])
         sname, iname = m.group(5), m.group(6)
@@ -105,33 +105,32 @@ def main():
     chk('bustri4.enabledt net == AND11.OUT', tgt4 == a11['OUT'])
     chk('bustri5.enabledt net == AND12.OUT', tgt5 == a12['OUT'])
     # buffer read pin (976,688) == AND14.OUT
-    tgtR = None
-    for k, v in top.items():
-        for pn, pt in v.items():
-            if pt == (976, 688): tgtR = v[pn]
+    tgtR = T('inst2')['read']
     chk('buffer.read pin net == AND14.OUT', tgtR == a14['OUT'])
     chk('buffer.read net != Read net', tgtR != read_net)
     chk('buffer.read net != clk net', tgtR != clk_net)
     # buffer write pin (976,704) untouched, distinct
-    tgtW = None
-    for k, v in top.items():
-        for pn, pt in v.items():
-            if pt == (976, 704): tgtW = v[pn]
+    tgtW = T('inst2')['write']
     chk('buffer.write pin net distinct from read/clk', tgtW not in (tgtR, read_net, clk_net))
     # ---- buffer internal ----
-    bst = B('inst14'); or16 = B('inst16'); and15 = B('inst15')
+    bst = B('inst14'); or16 = B('inst16')
     rpin = dbuf.find((-8, 416)); wpin = dbuf.find((72, 448)); cpin = dbuf.find((72, 240))
     chk('buf: enabletr == OR16.OUT', bst.get('enabletr') == or16['OUT'] or
         (lambda: [v[pn] for k, v in buf.items() if k[0]=='inst14' for pn, pt in v.items() if pt==(632,408)])() == [or16['OUT']])
     etr = [v[pn] for k, v in buf.items() if k[0] == 'inst14' for pn, pt in v.items() if pt == (632, 408)]
     edt = [v[pn] for k, v in buf.items() if k[0] == 'inst14' for pn, pt in v.items() if pt == (632, 464)]
     chk('buf: enabletr(632,408) == OR16.OUT', etr == [or16['OUT']])
-    chk('buf: enabledt(632,464) == write pin', edt == [wpin])
+    chk('buf: enabledt == write pin', bst.get('enabledt') == wpin)
     chk('buf: OR16.IN1 == read pin', or16['IN1'] == rpin)
     chk('buf: OR16.IN2 == write pin', or16['IN2'] == wpin)
-    chk('buf: AND15 = clk & OR16.OUT -> spine', and15['IN2'] == or16['OUT'] and and15['IN1'] == cpin)
-    spine = [v[pn] for k, v in buf.items() if k[0] == 'inst10' for pn, pt in v.items() if pn == 'clock']
-    chk('buf: DFF clocks == AND15.OUT', spine == [and15['OUT']])
+    armed, aread, awrite, combine, inv = T('inst15'), T('inst16'), T('inst17'), T('inst18'), T('inst19')
+    chk('control DFF samples Write on clk outside buffer', armed['data'] == T('inst2')['write'] and armed['clock'] == clk_net)
+    chk('read clock = clk & buffer read', aread['IN1'] == clk_net and aread['IN2'] == T('inst2')['read'])
+    chk('NOT input = clk', inv['IN'] == clk_net)
+    chk('write clock = NOT clk & registered write', awrite['IN1'] == inv['OUT'] and awrite['IN2'] == armed['q'])
+    chk('OR combines read and write clocks', combine['IN1'] == aread['OUT'] and combine['IN2'] == awrite['OUT'])
+    chk('buffer clk is combined clock', T('inst2')['clk'] == combine['OUT'])
+    chk('buffer DFF clocks connect directly to buffer clk', B('inst10')['clock'] == cpin)
     # --- inclock/outclock split (lab requirement) ---
     rom, ram = T('inst'), T('inst1')          # lpm_rom0, lpm_ram_dq0
     a6, a7 = T('inst6'), T('inst7')           # AND2 gates
@@ -143,8 +142,7 @@ def main():
         rom['outclock'] == clk_net)
     chk('ROM: inclock and outclock are SPLIT (different nets)',
         rom['inclock'] != rom['outclock'])
-    chk('RAM: inclock == inst7.OUT (clk&(Read|Write))',
-        ram['inclock'] == a7['OUT'])
+    chk('RAM: inclock == inst7.OUT (clk&(Read|Write))', ram['inclock'] == a7['OUT'])
     chk('RAM: has outclock port (split clock interface)',
         'outclock' in ram)
     ram_oc_pt = None
@@ -158,4 +156,5 @@ def main():
     print('\nALL PASS' if ok else '\nFAILURES PRESENT')
     sys.exit(0 if ok else 1)
 
-main()
+if __name__ == "__main__":
+    main()

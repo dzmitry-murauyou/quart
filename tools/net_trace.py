@@ -5,7 +5,7 @@ import re, sys
 def parse(path):
     s = open(path, encoding='utf-8').read()
     syms = []
-    for m in re.finditer(r'\(symbol\n\t\(rect (\d+) (\d+) (\d+) (\d+)\)\n'
+    for m in re.finditer(r'\(symbol\n\t\(rect (-?\d+) (-?\d+) (-?\d+) (-?\d+)\)\n'
                          r'\t\(text "([^"]+)"[^\n]*\n\t\(text "(inst[^"]*)"', s):
         x0, y0, x1, y1 = map(int, m.groups()[:4])
         sname, iname = m.group(5), m.group(6)

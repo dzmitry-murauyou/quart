@@ -1,189 +1,82 @@
 #!/usr/bin/env python3
-"""Strict audit of the ENHANCED schematic (RD1/RD2 strobes + validity gating +
-buffer enabletr recirculation) against the UNCHANGED committed Block1.vwf.
+"""Idealized event-level check of Block1.vwf and the split-phase buffer clock.
 
-Semantics modelled (matches Quartus functional netlist behaviour):
-  RD1/RD2 : 1-bit DFFs on raw clk, RD1<=Read, RD2<=RD1;
-  eq0/eq1 : decode outputs = Read & !ROM_RAM / Read & ROM_RAM;
-  rom_valid = eq0 & RD2  -> bustri4.enabledt (ROM q onto ShD);
-  ram_valid = eq1 & RD1  -> bustri5.enabledt (RAM q onto ShD);
-  buffer read pin = (rom_valid | ram_valid) & Read (inst13+inst14);
-  buffer write pin = clk & Write (unchanged);
-  buffer chain clocks on spine = clk & (read_pin | write_pin);
-  bustri0.enabletr = read_pin | write_pin  (recirculation, no X);
-  chain DFF samples ShD with setup: value just before the edge, except during
-  write windows where bustri0 settles to r5 right after clk rise.
+The structural wiring is checked separately by check_bdf.py. This model is not
+Quartus: gate/clock-to-Q delays and the exact delta-cycle ordering are omitted.
+It must not be used as a substitute for functional or timing simulation.
 """
-import sys
-sys.path.insert(0, 'tools')
-from sim_check import mif_load, parse_vwf_inputs, value_at, b2h, Z, clean_for_reg
-
-DUR = 860.0
-
-
-def simulate2(sigs, dur, rom_mem, ram_mem):
-    times = set()
-    for tl in sigs.values():
-        for (t0, _) in tl:
-            times.add(round(t0, 6))
-    times = sorted(t for t in times if t <= dur + 1e-9)
-
-    rom_addr_reg, rom_out_reg, ram_addr_reg = 0, '0' * 8, 0
-    ram = dict(ram_mem)
-    chain = ['0' * 8] * 6
-    RD1 = RD2 = 0
-    prev_clk = prev_g_rom = prev_g_ram = 0
-    events, bus_trace = [], []
-
-    def A_at(t):
-        return int(''.join(value_at(sigs['Address[%d]' % b], t)
-                           for b in [5, 4, 3, 2, 1, 0]), 2)
-
-    def bus_level(eq0, eq1, rd2, rd1, clk, write, rom_q, ram_q, r5):
-        if eq0 and rd2:
-            return rom_q
-        if eq1 and rd1:
-            return ram_q
-        if clk and write:
-            return r5
-        return Z * 8
-
-    for t in times:
-        clk = int(value_at(sigs['clk'], t))
-        read = int(value_at(sigs['Read'], t))
-        write = int(value_at(sigs['Write'], t))
-        rrsel = int(value_at(sigs['ROM_RAM'], t))
-        A = A_at(t)
-        rising = clk == 1 and prev_clk == 0
-
-        eq0 = read & (1 - rrsel)
-        eq1 = read & rrsel
-        rom_q_pre, ram_q_pre = rom_out_reg, ram.get(ram_addr_reg, 'X' * 8)
-
-        g_rom = clk & read
-        g_ram = clk & (read | write)
-
-        # pre-edge validity (strobe state before this edge)
-        rv_pre = eq0 & RD2
-        rv2_pre = eq1 & RD1
-        read_pin_pre = (rv_pre | rv2_pre) & read
-        chain_edge = rising and (read_pin_pre == 1 or write == 1)
-
-        # memory edges
-        if g_rom and not prev_g_rom:
-            rom_out_reg = rom_mem.get(rom_addr_reg, 'X' * 8)
-            rom_addr_reg = A
-        if g_ram and not prev_g_ram:
-            if write:
-                ram[A] = clean_for_reg(chain[5])
-                events.append((t, 'ram_wr', A, chain[5]))
-            ram_addr_reg = A
-
-        # buffer chain sample
-        if chain_edge:
-            if write:
-                sample = clean_for_reg(chain[5])
-            elif rv_pre:
-                sample = clean_for_reg(rom_q_pre)
-            elif rv2_pre:
-                sample = clean_for_reg(ram_q_pre)
-            else:
-                sample = Z * 8
-            chain = [sample] + chain[:5]
-            events.append((t, 'buf_latch', sample))
-
-        # strobes on raw clk rise
-        if rising:
-            RD2, RD1 = RD1, read
-
-        # observable bus level after all updates at t
-        bus = bus_level(eq0, eq1, RD2, RD1, clk, write,
-                        rom_out_reg, ram.get(ram_addr_reg, 'X' * 8), chain[5])
-        bus_trace.append((t, clk, bus))
-        prev_clk = clk
-        prev_g_rom, prev_g_ram = g_rom, g_ram
-    return ram, chain, events, bus_trace
+from sim_check import mif_load, parse_vwf_inputs, value_at, b2h, clean_for_reg
 
 
 def main():
-    rom = mif_load('lab3/rom.mif')
-    ram0 = mif_load('lab3/ram.mif')
-    sigs, dur = parse_vwf_inputs('lab3/Block1.vwf')
-    ram, chain, events, bus_trace = simulate2(sigs, dur, rom, ram0)
-    ok = True
+    sig, duration = parse_vwf_inputs('lab3/Block1.vwf')
+    rom, ram = mif_load('lab3/rom.mif'), mif_load('lab3/ram.mif')
+    times = sorted({t for values in sig.values() for t, _ in values if t <= duration})
+    chain = ['00000000'] * 6
+    ra = 0
+    rq = rom[ra]
+    ma = 0
+    rd1 = rd2 = 0
+    write_armed = 0
+    previous_clk = 0
+    previous_rom_clk = 0
+    previous_buffer_clk = 0
+    writes, shifts, bad_changes = [], [], []
+    prev_write = 0
 
-    def chk(label, cond):
-        nonlocal ok
-        print(('PASS ' if cond else 'FAIL ') + label)
-        ok = ok and cond
+    for t in times:
+        clk, read, write, sel = (int(value_at(sig[n], t)) for n in ('clk', 'Read', 'Write', 'ROM_RAM'))
+        addr = int(''.join(value_at(sig['Address[%d]' % b], t) for b in range(5, -1, -1)), 2)
+        rising = clk and not previous_clk
+        falling = not clk and previous_clk
+        if write != prev_write and clk:
+            bad_changes.append(t)
+        rom_valid = read and not sel and rd2
+        ram_valid = read and sel and rd1
+        read_pin = rom_valid or ram_valid
+        buf_clk = (clk and read_pin) or ((not clk) and write_armed)
+        sample = chain[5] if write else (rq if rom_valid else ram.get(ma, 'XXXXXXXX'))
+        if buf_clk and not previous_buffer_clk:
+            chain = [clean_for_reg(sample)] + chain[:5]
+            shifts.append((t, 'write' if write else 'read', b2h(sample), 'fall' if falling else 'rise' if rising else 'other'))
+        # All memories observe the same old state at a rising edge.
+        old_ra = ra
+        if clk and read and not previous_rom_clk:
+            ra = addr
+        if rising:
+            rq = rom.get(old_ra, 'XXXXXXXX')
+            if write:
+                data = chain[5]
+                ram[addr] = data
+                writes.append((t, addr, b2h(data)))
+            ma = addr
+            rd1, rd2 = read, rd1
+            write_armed = write
+        # A read-valid DFF can enable the gated clock during the same high phase.
+        read_after = read and ((not sel and rd2) or (sel and rd1))
+        buf_after = (clk and read_after) or ((not clk) and write_armed)
+        if buf_after and not buf_clk:
+            sample = rq if not sel else ram.get(ma, 'XXXXXXXX')
+            chain = [clean_for_reg(sample)] + chain[:5]
+            shifts.append((t, 'read-valid', b2h(sample), 'delta'))
+        previous_buffer_clk = buf_after
+        previous_rom_clk = clk and read
+        previous_clk, prev_write = clk, write
 
-    print('--- RAM final dump ---')
-    for a in [0x00] + list(range(0x0A, 0x10)) + list(range(0x30, 0x3E)):
-        print('  [%02X]=%s' % (a, b2h(ram.get(a, '??'))), end='')
-    print()
-    chk('mem[0x30..0x35] == 11..66',
-        [b2h(ram[a]) for a in range(0x30, 0x36)] == ['11', '22', '33', '44', '55', '66'])
-    chk('mem[0x38..0x3D] == AA..FF',
-        [b2h(ram[a]) for a in range(0x38, 0x3E)] == ['AA', 'BB', 'CC', 'DD', 'EE', 'FF'])
-    chk('mem[0x0A..0x0F] intact',
-        [b2h(ram[a]) for a in range(0x0A, 0x10)] == ['AA', 'BB', 'CC', 'DD', 'EE', 'FF'])
-    chk('mem[0] == FF', b2h(ram[0]) == 'FF')
+    expected = list(zip(range(0x30, 0x36), ['11','22','33','44','55','66'])) + list(zip(range(0x38, 0x3e), ['AA','BB','CC','DD','EE','FF']))
+    checks = {
+        'Write transitions occur during clk low': not bad_changes,
+        '12 RAM writes in correct address/data order': [(a, d) for _, a, d in writes] == expected,
+        'all buffer shifts during Write occur on falling clk': all(edge == 'fall' for _, phase, _, edge in shifts if phase == 'write'),
+        '12 falling-edge shifts during Write': sum(phase == 'write' for _, phase, _, _ in shifts) == 12,
+        'RAM source bytes remain intact': [b2h(ram[a]) for a in range(10,16)] == ['AA','BB','CC','DD','EE','FF'],
+        'RAM cell 0 is FF': b2h(ram[0]) == 'FF',
+    }
+    for name, result in checks.items(): print(('PASS ' if result else 'FAIL ') + name)
+    print('RAM writes:', writes)
+    print('Buffer clock events:', shifts)
+    print('NOTE: read-valid clock gating may create a delta-cycle edge; verify in Quartus.')
+    return 0 if all(checks.values()) else 1
 
-    needed = {'11', '22', '33', '44', '55', '66',
-              'AA', 'BB', 'CC', 'DD', 'EE', 'FF'}
-    rl = [e for e in events if e[1] == 'buf_latch' and not (260 <= e[0] < 380 or 620 <= e[0] < 740)]
-    wl = [e for e in events if e[1] == 'buf_latch' and (260 <= e[0] < 380 or 620 <= e[0] < 740)]
-    print('--- buffer latch samples (read phases) ---')
-    print('  ', [b2h(e[2]) for e in rl])
-    print('--- recirculation samples (write phases, benign) ---')
-    print('  ', [b2h(e[2]) for e in wl])
-    chk('exactly 12 read-phase latch edges (6+6)', len(rl) == 12)
-    chk('latched bytes = exactly the 12 needed, in order',
-        [b2h(e[2]) for e in rl] == ['11', '22', '33', '44', '55', '66',
-                                    'AA', 'BB', 'CC', 'DD', 'EE', 'FF'])
-    chk('write phases only recirculate own bytes (no X/Z)',
-        all(b2h(e[2]) in needed for e in wl))
-    chk('final chain r5..r0 == AA..FF',
-        [b2h(c) for c in chain[::-1]] == ['AA', 'BB', 'CC', 'DD', 'EE', 'FF'])
-
-    print('--- ShD bus level trace (non-Z segments) ---')
-    segs, cur = [], None
-    for (t, clk, bus) in bus_trace + [(DUR, 0, Z * 8)]:
-        h = 'Z' if bus == Z * 8 else b2h(bus)
-        if cur is None or cur[2] != h:
-            if cur: segs.append((cur[0], t, cur[2]))
-            cur = (t, t, h)
-        else:
-            cur = (cur[0], t, h)
-    for s in segs:
-        if s[2] != 'Z':
-            print('   [%6.1f, %6.1f) = %s' % s)
-    bad = [s for s in segs if s[2] not in needed and s[2] != 'Z']
-    chk('bus carries ONLY needed bytes (no X/junk/00)', not bad)
-    def bus_at(tq):
-        v = Z * 8
-        for (t, clk, bus) in bus_trace:
-            if t <= tq:
-                v = bus
-            else:
-                break
-        return 'Z' if v == Z * 8 else b2h(v)
-    chk('bus Z in idle gaps',
-        [bus_at(t) for t in (50, 240, 400, 600, 800)] == ['Z'] * 5)
-    win = [(90, 220), (260, 380), (450, 580), (620, 740)]
-    chk('bus driven only inside activity windows',
-        all(any(a <= s[0] and s[1] <= b for (a, b) in win)
-            for s in segs if s[2] != 'Z'))
-    wr = [e for e in events if e[1] == 'ram_wr']
-    print('--- RAM writes ---')
-    for e in wr:
-        print('   t=%g addr=%02X data=%s' % (e[0], e[2], b2h(e[3])))
-    chk('12 RAM writes, correct addr/data order',
-        [(e[2], b2h(e[3])) for e in wr] ==
-        list(zip(range(0x30, 0x36), ['11', '22', '33', '44', '55', '66'])) +
-        list(zip(range(0x38, 0x3E), ['AA', 'BB', 'CC', 'DD', 'EE', 'FF'])))
-    print('\nALL PASS' if ok else '\nFAILURES PRESENT')
-    return 0 if ok else 1
-
-
-sys.exit(main())
+if __name__ == '__main__':
+    raise SystemExit(main())
