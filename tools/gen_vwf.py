@@ -1,12 +1,34 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Generate the phase-separated Quartus II 9.1 lab waveform.
+"""
+Rewrite lab3/Block1.vwf with a corrected, glitch-free stimulus for
+Quartus II 9.1 functional simulation (SIFO lab 3, variant 12).
 
-Memory address changes occur 2 ns after falling edges, never at an active
-memory clock edge. ROM output and RAM read address update on falling edges;
-the buffer captures memory data on rising edges. RAM writes on rising edges,
-while the buffer shifts on falling edges. Write deasserts before the final
-falling edge so a previously-written byte cannot reappear on the data bus.
+Design facts (verified against lpm_rom0.v / lpm_ram_dq0.v / buffer_6byte.bdf):
+  * clk period 20 ns, rising edges at 10+20k ns, falling edges at 20k ns.
+  * ROM: address reg (inclock) + output reg (outclock) -> 2-cycle latency,
+         clocked by clk & Read.
+  * RAM: address reg (inclock), async output -> 1-cycle latency,
+         clocked by clk & (Read|Write); wren = Write.
+  * Buffer: 6-deep lpm_dff shift chain. It shifts on the rising clk
+         while reading and on the falling clk while writing. The top-level
+         write_armed DFF suppresses an extra shift when Write starts.
+  * Read and Write are asserted while clk is low; Write is deasserted
+    while clk is high after the final write. Address changes occur two
+    nanoseconds after falling edges, with 8 ns before the next rising edge.
+
+Corrected schedule:
+  [0,60)     idle (scheme does not start at 0 ns)
+  [60,220)   READ from ROM (ROM_RAM=0), addresses 0x03..0x08, 8 gated edges:
+             2 pipeline-fill + 6 data samples 11,22,33,44,55,66 -> buffer
+  [220,260)  wait 2 clk
+  [260,375)  WRITE buffer -> RAM addresses 0x30..0x35, 6 gated edges
+  [375,440)  wait (ROM_RAM 0->1 at 420, address preset 0x0A)
+  [440,580)  READ from RAM (ROM_RAM=1), addresses 0x0A..0x0F, 7 gated edges:
+             1 pipeline-fill (stale q) + 6 data samples AA,BB,CC,DD,EE,FF
+  [580,620)  wait 2 clk (address preset 0x38)
+  [620,735)  WRITE buffer -> RAM addresses 0x38..0x3D, 6 gated edges
+  [735,860)  idle
 """
 import re, os
 
@@ -25,27 +47,32 @@ def tl(levels):
 
 NEW = {}
 # clk: unchanged (kept from original file)
-NEW['Read'] = tl([(0, 60), (1, 155), (0, 225), (1, 155), (0, 265)])
+NEW['Read'] = tl([(0, 60), (1, 160), (0, 220), (1, 140), (0, 280)])
 NEW['Write'] = tl([(0, 260), (1, 115), (0, 245), (1, 115), (0, 125)])
 NEW['ROM_RAM'] = tl([(0, 420), (1, 440)])
-# Addresses change away from the edges that clock either memory. Keep the
-# first read address for two cycles while the valid pipeline fills.
-address_changes = [
-    (0, 3), (102, 4), (122, 5), (142, 6), (162, 7), (182, 8),
-    (262, 48), (282, 49), (302, 50), (322, 51), (342, 52), (362, 53),
-    (422, 10), (482, 11), (502, 12), (522, 13), (542, 14), (562, 15),
-    (602, 56), (642, 57), (662, 58), (682, 59), (702, 60), (722, 61),
-]
+NEW['Address[5]'] = tl([(0, 260), (1, 160), (0, 180), (1, 260)])
+NEW['Address[4]'] = tl([(0, 260), (1, 160), (0, 180), (1, 260)])
+NEW['Address[3]'] = tl([(0, 160), (1, 100), (0, 160), (1, 440)])
+NEW['Address[2]'] = tl([(0, 80), (1, 80), (0, 180), (1, 80), (0, 60),
+                        (1, 120), (0, 100), (1, 160)])
+NEW['Address[1]'] = tl([(1, 80), (0, 40), (1, 40), (0, 140), (1, 40),
+                        (0, 80), (1, 60), (0, 40), (1, 80), (0, 60),
+                        (1, 40), (0, 160)])
+NEW['Address[0]'] = tl([(1, 80), (0, 20), (1, 20), (0, 20), (1, 20),
+                        (0, 120), (1, 20), (0, 20), (1, 20), (0, 20),
+                        (1, 60), (0, 40), (1, 20), (0, 20), (1, 20),
+                        (0, 20), (1, 60), (0, 40), (1, 20), (0, 20),
+                        (1, 20), (0, 20), (1, 140)])
+# Offset address transitions from clock edges; the final 8 ns before each
+# active rising edge leave time for the address to settle in this stimulus.
 for bit in range(6):
-    levels = []
-    for i, (start, address) in enumerate(address_changes):
-        end = address_changes[i + 1][0] if i + 1 < len(address_changes) else DUR
-        level = (address >> bit) & 1
-        if levels and levels[-1][0] == level:
-            levels[-1] = (level, levels[-1][1] + end - start)
-        else:
-            levels.append((level, end - start))
-    NEW['Address[%d]' % bit] = tl(levels)
+    name = 'Address[%d]' % bit
+    levels = [(int(level), float(duration)) for level, duration in
+              re.findall(r'LEVEL (\d+) FOR ([\d.]+);', NEW[name])]
+    if len(levels) > 1:
+        levels[0] = (levels[0][0], levels[0][1] + 2)
+        levels[-1] = (levels[-1][0], levels[-1][1] - 2)
+    NEW[name] = tl(levels)
 # outputs: clear stale results -> Z for the whole run; the Quartus simulator
 # re-fills them when the user presses "Start Simulation"
 for sig in ['Data', 'ROM_out', 'RAM_out2']:

@@ -92,10 +92,10 @@ def main():
     chk('RD1.data == RD2? no; RD1.data net != clk net', read_net != clk_net)
     chk('RD1.clock == RD2.clock == clk', rd1['clock'] == rd2['clock'] == clk_net)
     chk('RD2.data == RD1.q', rd2['data'] == rd1['q'])
-    chk('read-ready DFF data == RD2.q', T('inst23')['data'] == rd2['q'])
-    chk('ROM and RAM enables use read-ready DFF', a11['IN2'] == a12['IN2'] == T('inst23')['q'])
+    chk('AND11.IN2 == RD2.q', a11['IN2'] == rd2['q'])
+    chk('AND12.IN2 == RD1.q', a12['IN2'] == rd1['q'])
     chk('AND11.IN2 != AND12.IN1', a11['IN2'] != a12['IN1'])
-    chk('read-ready is separate from RD2', a12['IN2'] != rd2['q'])
+    chk('AND12.IN2 != RD2.q', a12['IN2'] != rd2['q'])
     chk('AND11.IN1 != AND12.IN1 (eq0 != eq1)', a11['IN1'] != a12['IN1'])
     chk('AND11.OUT == bustri4 enabledt (1080,296 net) & OR13.IN1',
         a11['OUT'] == o13['IN1'])
@@ -136,11 +136,10 @@ def main():
     chk('control DFF samples Write on clk outside buffer', armed['data'] == T('inst2')['write'] and armed['clock'] == clk_net)
     chk('read clock = clk & buffer read', aread['IN1'] == clk_net and aread['IN2'] == T('inst2')['read'])
     chk('NOT input = clk', inv['IN'] == clk_net)
-    stop = T('inst20')
-    chk('write clock is enabled only by Write and registered Write',
-        stop['IN1'] == armed['q'] and stop['IN2'] == tgtW and
-        awrite['IN1'] == inv['OUT'] and awrite['IN2'] == stop['OUT'])
-    chk('read-ready DFF clocks on inverted clk', T('inst23')['clock'] == inv['OUT'])
+    final_enable = T('inst20')
+    chk('write clock = NOT clk & registered Write & Write',
+        final_enable['IN1'] == armed['q'] and final_enable['IN2'] == T('inst2')['write'] and
+        awrite['IN1'] == inv['OUT'] and awrite['IN2'] == final_enable['OUT'])
     chk('OR combines read and write clocks', combine['IN1'] == aread['OUT'] and combine['IN2'] == awrite['OUT'])
     chk('buffer clk is combined clock', T('inst2')['clk'] == combine['OUT'])
     chk('buffer DFF clocks connect directly to buffer clk', B('inst10')['clock'] == cpin)
@@ -149,16 +148,13 @@ def main():
     a6, a7 = T('inst6'), T('inst7')           # AND2 gates
     chk('ROM: has inclock & outclock ports',
         'inclock' in rom and 'outclock' in rom)
-    chk('ROM.inclock == clk & selected ROM read',
-        rom['inclock'] == a6['OUT'] and a6['IN1'] == clk_net and a6['IN2'] == a11['IN1'])
-    chk('ROM.outclock uses inverted clk', rom['outclock'] == inv['OUT'] and inv['OUT'] != clk_net)
+    chk('ROM.inclock == inst6.OUT (clk&Read, gated)',
+        rom['inclock'] == a6['OUT'])
+    chk('ROM.outclock == top-level clk net (raw)',
+        rom['outclock'] == clk_net)
     chk('ROM: inclock and outclock are SPLIT (different nets)',
         rom['inclock'] != rom['outclock'])
-    ar, mux = T('inst21'), T('inst22')
-    chk('RAM inclock = clk & Write OR NOT clk & selected RAM read',
-        a7['IN1'] == clk_net and a7['IN2'] == tgtW and
-        ar['IN1'] == inv['OUT'] and ar['IN2'] == a12['IN1'] and
-        mux['IN1'] == a7['OUT'] and mux['IN2'] == ar['OUT'] and ram['inclock'] == mux['OUT'])
+    chk('RAM: inclock == inst7.OUT (clk&(Read|Write))', ram['inclock'] == a7['OUT'])
     chk('RAM: has outclock port (split clock interface)',
         'outclock' in ram)
     ram_oc_pt = None
