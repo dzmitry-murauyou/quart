@@ -160,8 +160,13 @@ def main():
             ram_oc_pt = ports['outclock']
     def pin_wired(pt):
         return any(a == pt or b == pt or on_seg(pt, a, b) for a, b in tconn)
-    chk('RAM.outclock pin UNCONNECTED -> asynchronous output',
+    chk('RAM.outclock schematic pin is unconnected',
         ram_oc_pt == (960, 592) and not pin_wired(ram_oc_pt))
+    ram_verilog = open('lab3/lpm_ram_dq0.v', encoding='utf-8').read()
+    chk('RAM output is configured as UNREGISTERED',
+        bool(re.search(r'outdata_reg_a\s*=\s*"UNREGISTERED"', ram_verilog, re.I)))
+    chk('unused altsyncram clock1 has Quartus generated constant',
+        bool(re.search(r"\.clock1\s*\(\s*1'b1\s*\)", ram_verilog)))
     print('\nALL PASS' if ok else '\nFAILURES PRESENT')
     sys.exit(0 if ok else 1)
 

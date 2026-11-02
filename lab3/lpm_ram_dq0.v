@@ -47,6 +47,8 @@ module lpm_ram_dq0 (
 	input	[5:0]  address;
 	input	[7:0]  data;
 	input	  inclock;
+	// Retained on the schematic for the split-clock interface. The RAM is
+	// configured with an unregistered output, so this clock is unused.
 	input	  outclock;
 	input	  wren;
 	output	[7:0]  q;
@@ -67,7 +69,9 @@ module lpm_ram_dq0 (
 				.addressstall_b (1'b0),
 				.byteena_a (1'b1),
 				.byteena_b (1'b1),
-				.clock1 (outclock),
+				// clock1 is unused with OUTDATA_REG_A=UNREGISTERED. Use the
+				// constant from the Quartus 9.1 generated RAM wrapper.
+				.clock1 (1'b1),
 				.clocken0 (1'b1),
 				.clocken1 (1'b1),
 				.clocken2 (1'b1),
@@ -156,7 +160,6 @@ endmodule
 // Retrieval info: CONNECT: @address_a 0 0 6 0 address 0 0 6 0
 // Retrieval info: CONNECT: q 0 0 8 0 @q_a 0 0 8 0
 // Retrieval info: CONNECT: @clock0 0 0 0 0 inclock 0 0 0 0
-// Retrieval info: CONNECT: @clock1 0 0 0 0 outclock 0 0 0 0
 // Retrieval info: CONNECT: @data_a 0 0 8 0 data 0 0 8 0
 // Retrieval info: CONNECT: @wren_a 0 0 0 0 wren 0 0 0 0
 // Retrieval info: LIBRARY: altera_mf altera_mf.altera_mf_components.all
